@@ -1,4 +1,4 @@
 name: ServerPasswordClient
 version: '1.0-SNAPSHOT'
 main: com.brylebaligad.serverPasswordClient.ServerPasswordClient
-api-version: '1.21'
+api-version: '1.20'

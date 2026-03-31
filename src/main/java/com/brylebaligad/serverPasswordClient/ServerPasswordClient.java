@@ -1,6 +1,8 @@
 package com.brylebaligad.serverPasswordClient;
 
 import io.papermc.paper.event.player.PlayerPickItemEvent;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.title.Title;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
@@ -9,6 +11,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.EntityTargetEvent;
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
@@ -31,7 +34,7 @@ public final class ServerPasswordClient extends JavaPlugin implements Listener, 
     @Override
     public void onEnable() {
         // Plugin startup logic
-        getLogger().info("ServerPassword [Proxy Edition Client] (c) Bryle Baligad, 2023 - 2025");
+        getLogger().info("ServerPassword [Proxy Edition Client] (c) Bryle Baligad, 2023 - 2026");
         Bukkit.getMessenger().registerOutgoingPluginChannel(this, "serverpassword:auth");
         Bukkit.getMessenger().registerIncomingPluginChannel(this, "serverpassword:auth", this);
 
@@ -44,25 +47,44 @@ public final class ServerPasswordClient extends JavaPlugin implements Listener, 
     }
 
     @Override
-    public void onPluginMessageReceived(String channel, @NotNull Player player, byte @NotNull [] message) {
-        if (!channel.equals("serverpassword:auth")) return;
+    public void onPluginMessageReceived(String channel, @NotNull Player _player, byte @NotNull [] message) {
+        if (channel.equals(("serverpassword:auth"))) {
+            try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(message))) {
+                String subChannel = in.readUTF();
+                if (subChannel.equals("update")) {
+                    UUID uuid = UUID.fromString(in.readUTF());
+                    boolean isAuthenticated = in.readBoolean();
 
-        try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(message))) {
-            String subChannel = in.readUTF();
-            if (subChannel.equals("update")) {
-                UUID uuid = UUID.fromString(in.readUTF());
-                boolean isAuthenticated = in.readBoolean();
+                    if (getServer().getPlayer(uuid) != null) {
+                        getLogger().info("Auth update for " + Objects.requireNonNull(getServer().getPlayer(uuid)).getName() + ": " + isAuthenticated);
+                    }
+                    if (isAuthenticated) {
+                        authenticatedPlayers.add(uuid);
+                        Player p = getServer().getPlayer(uuid);
+                        if (p != null) {
+                            Title t = Title.title(Component.text(""), Component.text(""));
+                            getServer().getScheduler().runTaskLater(this, () -> p.showTitle(t), 5L);
+                        }
+                    } else {
+                        authenticatedPlayers.remove(uuid);
+                    }
+                }
 
-                if (getServer().getPlayer(uuid) != null) {
-                    getLogger().info("Auth update for " + Objects.requireNonNull(getServer().getPlayer(uuid)).getName() + ": " + isAuthenticated);
+                if (subChannel.equals("title")) {
+                    UUID uuid = UUID.fromString(in.readUTF());
+                    String title = in.readUTF();
+
+                    Player player = getServer().getPlayer(uuid);
+                    if (player != null) {
+                        getLogger().info("Send title for " + Objects.requireNonNull(getServer().getPlayer(uuid)).getName() + ": " + title);
+                        String mainTitle = title.split("\n")[0];
+                        String subTitle = title.split("\n")[1];
+                        Title t = Title.title(Component.text(mainTitle), Component.text(subTitle));
+                        getServer().getScheduler().runTaskLater(this, () -> player.showTitle(t), 5L);
+                    }
                 }
-                if (isAuthenticated) {
-                    authenticatedPlayers.add(uuid);
-                } else {
-                    authenticatedPlayers.remove(uuid);
-                }
-            }
-        } catch (Exception ignored) {}
+            } catch (Exception ignored) {}
+        }
     }
 
     @EventHandler
@@ -141,9 +163,19 @@ public final class ServerPasswordClient extends JavaPlugin implements Listener, 
     }
 
     @EventHandler
-    public void onPickUp(PlayerPickItemEvent event) {
+    public void onPickBlock(PlayerPickItemEvent event) {
         if (!authenticatedPlayers.contains(event.getPlayer().getUniqueId())) {
             event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onPickUp(EntityPickupItemEvent event) {
+        if (event instanceof Player) {
+            Player player = (Player) event.getEntity();
+            if (!authenticatedPlayers.contains(player.getUniqueId())) {
+                event.setCancelled(true);
+            }
         }
     }
 
